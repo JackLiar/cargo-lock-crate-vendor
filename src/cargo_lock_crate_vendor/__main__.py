@@ -121,9 +121,9 @@ async def async_main():
             url = f"https://crates.io/api/v1/crates/{crate.name}/{crate.version}/download"
             r = await client.get(url)
 
-            fpath = os.path.join(
-                output_dir, f"{crate.name}-{crate.version}.crate"
-            )
+            odir = os.path.join(output_dir, crate.name, crate.version)
+            os.makedirs(odir, exist_ok=True)
+            fpath = os.path.join(odir, "download")
             with open(fpath, "wb") as fp:
                 fp.write(r.content)
 
