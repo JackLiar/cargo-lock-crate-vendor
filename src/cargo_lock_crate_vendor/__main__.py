@@ -73,18 +73,17 @@ def parse_cargo_lock(fp: io.StringIO) -> Set[Crate]:
 def get_downloaded_crates(dir: str) -> Set[Crate]:
     crates = set()
 
-    for entry in os.scandir(dir):
-        if entry.is_dir():
-            continue
+    for root, dirs, files in os.walk(dir):
+        for file in files:
+            if file != "download":
+                continue
 
-        fname = os.path.basename(entry.path)
-        fname = fname[0:-6]
-        index = fname.rfind("-")
-        crate = Crate()
-        crate.name = fname[0:index]
-        crate.version = fname[index + 1 :]
-
-        crates.add(crate)
+            fpath = os.path.join(root, file)
+            crate_path = os.path.dirname(fpath)
+            crate = Crate()
+            crate.version = os.path.basename(crate_path)
+            crate.name = os.path.basename(os.path.dirname(crate_path))
+            crates.add(crate)
 
     return crates
 
