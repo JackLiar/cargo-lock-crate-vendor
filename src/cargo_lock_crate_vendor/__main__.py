@@ -15,8 +15,7 @@ from typing import Dict, Set
 import httpx
 import toml
 
-
-CRATE_RE = re.compile("[^\s]+(\s.+)*")
+CRATE_RE = re.compile(r"[^\s]+(\s.+)*")
 
 
 class Crate:
@@ -41,7 +40,6 @@ def parse_cargo_lock(fp: io.StringIO) -> Set[Crate]:
             # if a crate does not contains source field, it's probably a workspace crate
             continue
 
-        # print(f'crate: {crate["name"]} {crate["version"]}')
         c = Crate()
         c.name = crate["name"]
         c.version = crate["version"]
@@ -61,7 +59,6 @@ def parse_cargo_lock(fp: io.StringIO) -> Set[Crate]:
                 continue
 
             version = parts[1]
-            # print(f"dep: {name}, {version}")
             c = Crate()
             c.name = name
             c.version = version
@@ -71,6 +68,14 @@ def parse_cargo_lock(fp: io.StringIO) -> Set[Crate]:
 
 
 def get_downloaded_crates(dir: str) -> Set[Crate]:
+    """Get already downloaded crates from output directory
+
+    Args:
+        dir: target output directory
+
+    Returns:
+        Set[Crate]:  crates already downloaded
+    """
     crates = set()
 
     for root, dirs, files in os.walk(dir):
@@ -92,8 +97,12 @@ def parse_args() -> Dict:
     parser = ArgumentParser()
     parser.add_argument("-i", "--input", help="Cargo.lock location")
     parser.add_argument(
-        "-o", "--output", help=".crate save location", default="crates"
+        "-n", "--name", help="target crate name, must use with --version option"
     )
+    parser.add_argument(
+        "-v", "--version", help="target crate version, must use with --name option"
+    )
+    parser.add_argument("-o", "--output", help=".crate save location", default="crates")
     return vars(parser.parse_args())
 
 
@@ -106,9 +115,15 @@ async def async_main():
 
     downloaded_crates = get_downloaded_crates(output_dir)
 
-    with open(cfg["input"], "r") as fp:
-        crates = parse_cargo_lock(fp)
-        crates = sorted(crates, key=lambda c: (c.name, c.version))
+    if cfg.get("input", None) is not None:
+        with open(cfg["input"], "r") as fp:
+            crates = parse_cargo_lock(fp)
+            crates = sorted(crates, key=lambda c: (c.name, c.version))
+    elif cfg.get("name", None) is not None and cfg.get("version", None) is not None:
+        crate = Crate()
+        crate.name = cfg.get("name", None)
+        crate.version = cfg.get("version", None)
+        crates = [crate]
 
     for crate in crates:
         if crate in downloaded_crates:

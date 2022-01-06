@@ -14,8 +14,8 @@ setup(
     packages=find_namespace_packages(where="src"),
     install_requires=["httpx", "toml"],
     entry_points={
-            "console_scripts": [
-                "cargo-lock-crate-vendor=cargo_lock_crate_vendor.__main__:main"
-            ],
-        },
+        "console_scripts": [
+            "cargo-lock-crate-vendor=cargo_lock_crate_vendor.__main__:main"
+        ],
+    },
 )
