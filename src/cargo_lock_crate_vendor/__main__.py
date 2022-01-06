@@ -117,7 +117,8 @@ async def async_main():
 
         print(f"downloading {crate.name} {crate.version}")
         async with httpx.AsyncClient() as client:
-            url = f"https://crates.io/api/v1/crates/{crate.name}/{crate.version}/download"
+            url = f"https://static.crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
+
             r = await client.get(url)
 
             odir = os.path.join(output_dir, crate.name, crate.version)
