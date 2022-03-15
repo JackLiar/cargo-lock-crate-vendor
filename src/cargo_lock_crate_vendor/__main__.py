@@ -6,11 +6,13 @@ from __future__ import division
 from __future__ import print_function
 
 import asyncio
+from ctypes import Union
 import io
+import json
 import os
 import re
 from argparse import ArgumentParser
-from typing import Dict, Set
+from typing import Dict, List, Set, Tuple
 
 import httpx
 import toml
@@ -93,9 +95,41 @@ def get_downloaded_crates(dir: str) -> Set[Crate]:
     return crates
 
 
+def get_directory(crate_name: str):
+    if len(crate_name) <= 2:
+        return str(len(crate_name))
+    elif len(crate_name) == 3:
+        return str(len(crate_name)), crate_name[0]
+
+    dir1 = crate_name[0:2]
+    dir2 = crate_name[2:4]
+    return dir1, dir2
+
+
+async def get_crate_versions(crate_name: str) -> List[str]:
+    versions = []
+    result = get_directory(crate_name)
+    if type(result) is str:
+        url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{result}/{crate_name}"
+    else:
+        (dir1, dir2) = result
+        url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{dir1}/{dir2}/{crate_name}"
+    async with httpx.AsyncClient() as client:
+        r = await client.get(url)
+        for line in r.content.splitlines():
+            crate_info = json.loads(line.decode())
+            ver = crate_info["vers"]
+            versions.append(ver)
+
+    return versions
+
+
 def parse_args() -> Dict:
     parser = ArgumentParser()
     parser.add_argument("-i", "--input", help="Cargo.lock location")
+    parser.add_argument(
+        "--all", help="download all versions of all crates", action="store_true"
+    )
     parser.add_argument(
         "-n", "--name", help="target crate name, must use with --version option"
     )
@@ -118,12 +152,25 @@ async def async_main():
     if cfg.get("input", None) is not None:
         with open(cfg["input"], "r") as fp:
             crates = parse_cargo_lock(fp)
-            crates = sorted(crates, key=lambda c: (c.name, c.version))
     elif cfg.get("name", None) is not None and cfg.get("version", None) is not None:
         crate = Crate()
         crate.name = cfg.get("name", None)
         crate.version = cfg.get("version", None)
-        crates = [crate]
+        crates = set([crate])
+
+    if cfg.get("all"):
+        extra_crates = set()
+        for crate in crates:
+            versions = await get_crate_versions(crate.name)
+            for version in versions:
+                c = Crate()
+                c.name = crate.name
+                c.version = version
+                extra_crates.add(c)
+
+        crates = crates.union(extra_crates)
+
+    crates = sorted(crates, key=lambda c: (c.name, c.version))
 
     for crate in crates:
         if crate in downloaded_crates:
