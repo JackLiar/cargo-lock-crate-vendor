@@ -6,13 +6,12 @@ from __future__ import division
 from __future__ import print_function
 
 import asyncio
-from ctypes import Union
 import io
 import json
 import os
 import re
 from argparse import ArgumentParser
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set
 
 import httpx
 import toml
@@ -114,6 +113,7 @@ async def get_crate_versions(crate_name: str) -> List[str]:
     else:
         (dir1, dir2) = result
         url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{dir1}/{dir2}/{crate_name}"
+    print(url)
     async with httpx.AsyncClient() as client:
         r = await client.get(url)
         for line in r.content.splitlines():
@@ -122,6 +122,24 @@ async def get_crate_versions(crate_name: str) -> List[str]:
             versions.append(ver)
 
     return versions
+
+
+async def download_crate(crate: Crate) -> bytes:
+    print(f"downloading {crate.name} {crate.version}")
+    transport = httpx.AsyncHTTPTransport(retries=5)
+    async with httpx.AsyncClient(transport=transport) as client:
+        url = f"https://static.crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
+
+        r = await client.get(url)
+        return r.content
+
+
+def save_crate(crate: Crate, content: bytes, output_dir: str):
+    odir = os.path.join(output_dir, crate.name, crate.version)
+    os.makedirs(odir, exist_ok=True)
+    fpath = os.path.join(odir, "download")
+    with open(fpath, "wb") as fp:
+        fp.write(content)
 
 
 def parse_args() -> Dict:
@@ -159,16 +177,16 @@ async def async_main():
         crates = set([crate])
 
     if cfg.get("all"):
-        extra_crates = set()
         for crate in crates:
             versions = await get_crate_versions(crate.name)
             for version in versions:
                 c = Crate()
                 c.name = crate.name
                 c.version = version
-                extra_crates.add(c)
 
-        crates = crates.union(extra_crates)
+                content = await download_crate(c)
+                save_crate(c, content, output_dir)
+        return
 
     crates = sorted(crates, key=lambda c: (c.name, c.version))
 
@@ -177,17 +195,8 @@ async def async_main():
             print(f"{crate.name} {crate.version} is already downloaded")
             continue
 
-        print(f"downloading {crate.name} {crate.version}")
-        async with httpx.AsyncClient() as client:
-            url = f"https://static.crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
-
-            r = await client.get(url)
-
-            odir = os.path.join(output_dir, crate.name, crate.version)
-            os.makedirs(odir, exist_ok=True)
-            fpath = os.path.join(odir, "download")
-            with open(fpath, "wb") as fp:
-                fp.write(r.content)
+        content = await download_crate(crate)
+        save_crate(crate, content, output_dir)
 
 
 def main():
