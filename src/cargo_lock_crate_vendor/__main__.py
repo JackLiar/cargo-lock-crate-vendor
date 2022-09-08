@@ -8,6 +8,7 @@ from __future__ import print_function
 import asyncio
 import io
 import json
+import logging
 import os
 import re
 from argparse import ArgumentParser
@@ -105,7 +106,7 @@ def get_directory(crate_name: str):
     return dir1, dir2
 
 
-async def get_crate_versions(crate_name: str) -> List[str]:
+async def get_crate_versions(crate_name: str, max_previous: int = 5) -> List[str]:
     versions = []
     result = get_directory(crate_name)
     if type(result) is str:
@@ -113,10 +114,11 @@ async def get_crate_versions(crate_name: str) -> List[str]:
     else:
         (dir1, dir2) = result
         url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{dir1}/{dir2}/{crate_name}"
-    print(url)
-    async with httpx.AsyncClient() as client:
+    logging.debug(url)
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         r = await client.get(url)
-        for line in r.content.splitlines():
+        lines = list(r.content.splitlines())
+        for line in lines[max(len(lines) - max_previous, 0) :]:
             crate_info = json.loads(line.decode())
             ver = crate_info["vers"]
             versions.append(ver)
@@ -125,7 +127,7 @@ async def get_crate_versions(crate_name: str) -> List[str]:
 
 
 async def download_crate(crate: Crate) -> bytes:
-    print(f"downloading {crate.name} {crate.version}")
+    logging.info(f"downloading {crate.name} {crate.version}")
     transport = httpx.AsyncHTTPTransport(retries=5)
     async with httpx.AsyncClient(transport=transport) as client:
         url = f"https://static.crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
@@ -155,11 +157,16 @@ def parse_args() -> Dict:
         "-v", "--version", help="target crate version, must use with --name option"
     )
     parser.add_argument("-o", "--output", help=".crate save location", default="crates")
+    parser.add_argument("--max-previous", help="max previous crate version", type=int)
     return vars(parser.parse_args())
 
 
 async def async_main():
     cfg = parse_args()
+
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger("httpx").setLevel(logging.INFO)
+
     output_dir = os.path.abspath(cfg["output"])
 
     if not os.path.exists(output_dir):
@@ -176,9 +183,14 @@ async def async_main():
         crate.version = cfg.get("version", None)
         crates = set([crate])
 
-    if cfg.get("all"):
+    if cfg.get("all") or cfg.get("max_previous"):
+        if cfg.get("all"):
+            max_previous = 2**16
+        elif cfg.get("max_previous"):
+            max_previous = cfg.get("max_previous")
+
         for crate in crates:
-            versions = await get_crate_versions(crate.name)
+            versions = await get_crate_versions(crate.name, max_previous)
             for version in versions:
                 c = Crate()
                 c.name = crate.name
