@@ -12,7 +12,7 @@ import logging
 import os
 import re
 from argparse import ArgumentParser
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 import httpx
 import toml
@@ -28,11 +28,11 @@ class Crate:
     def __hash__(self) -> int:
         return hash((self.name, self.version))
 
-    def __eq__(self, o: object) -> bool:
+    def __eq__(self, o) -> bool:
         return self.name == o.name and self.version == o.version
 
 
-def parse_cargo_lock(fp: io.StringIO) -> Set[Crate]:
+def parse_cargo_lock(fp: io.TextIOBase) -> Set[Crate]:
     crates = set()
 
     content = toml.load(fp)
@@ -106,23 +106,39 @@ def get_directory(crate_name: str):
     return dir1, dir2
 
 
-async def get_crate_versions(crate_name: str, max_previous: int = 5) -> List[str]:
+async def get_crate_versions(
+    crate_name: str, max_previous: int = 5, registry: Optional[str] = None
+) -> List[str]:
     versions = []
     result = get_directory(crate_name)
-    if type(result) is str:
-        url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{result}/{crate_name}"
-    else:
-        (dir1, dir2) = result
-        url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{dir1}/{dir2}/{crate_name}"
-    logging.debug(url)
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        r = await client.get(url)
-        lines = list(r.content.splitlines())
-        for line in lines[max(len(lines) - max_previous, 0) :]:
-            crate_info = json.loads(line.decode())
-            ver = crate_info["vers"]
-            versions.append(ver)
 
+    if registry is None:
+        if type(result) is str:
+            url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{result}/{crate_name}"
+        else:
+            (dir1, dir2) = result
+            url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{dir1}/{dir2}/{crate_name}"
+        logging.debug(url)
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            r = await client.get(url)
+            lines = list(r.content.splitlines())
+            for line in lines[max(len(lines) - max_previous, 0) :]:
+                crate_info = json.loads(line.decode())
+                ver = crate_info["vers"]
+                versions.append(ver)
+    else:
+        if type(result) is str:
+            fpath = os.path.join(f"{os.path.abspath(registry)}", result, crate_name)
+        else:
+            (dir1, dir2) = result
+            fpath = os.path.join(f"{os.path.abspath(registry)}", dir1, dir2, crate_name)
+        # logging.debug(fpath)
+        with open(fpath) as fp:
+            lines = fp.readlines()
+            for line in lines[max(len(lines) - max_previous, 0) :]:
+                crate_info = json.loads(line)
+                ver = crate_info["vers"]
+                versions.append(ver)
     return versions
 
 
@@ -157,6 +173,9 @@ def parse_args() -> Dict:
         "-v", "--version", help="target crate version, must use with --name option"
     )
     parser.add_argument("-o", "--output", help=".crate save location", default="crates")
+    parser.add_argument(
+        "-r", "--registry", help="crates.io-index git registry location"
+    )
     parser.add_argument("--max-previous", help="max previous crate version", type=int)
     return vars(parser.parse_args())
 
@@ -168,29 +187,40 @@ async def async_main():
     logging.getLogger("httpx").setLevel(logging.INFO)
 
     output_dir = os.path.abspath(cfg["output"])
+    registry = cfg.get("registry", None)
+    if registry:
+        registry = os.path.abspath(registry)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
     downloaded_crates = get_downloaded_crates(output_dir)
 
+    crates = set()
     if cfg.get("input", None) is not None:
         with open(cfg["input"], "r") as fp:
             crates = parse_cargo_lock(fp)
     elif cfg.get("name", None) is not None and cfg.get("version", None) is not None:
         crate = Crate()
-        crate.name = cfg.get("name", None)
-        crate.version = cfg.get("version", None)
+        name = cfg.get("name", None)
+        version = cfg.get("version", None)
+        if name is None or version is None:
+            raise Exception("")
+        crate.name = name
+        crate.version = version
         crates = set([crate])
 
     if cfg.get("all") or cfg.get("max_previous"):
+        max_previous = 0
         if cfg.get("all"):
             max_previous = 2**16
-        elif cfg.get("max_previous"):
+        else:
             max_previous = cfg.get("max_previous")
+            if max_previous is None:
+                raise Exception("no max_previous is provided")
 
         for crate in crates:
-            versions = await get_crate_versions(crate.name, max_previous)
+            versions = await get_crate_versions(crate.name, max_previous, registry)
             for version in versions:
                 c = Crate()
                 c.name = crate.name
