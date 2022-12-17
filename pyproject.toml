@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "build"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cargo-lock-crate-vendor"
+version = "0.1.0"
+dependencies = ["httpx", "toml"]
+readme = "README.md"
+classifiers = ["Programming Language :: Python :: 3"]
+
+
+[project.scripts]
+"cargo-lock-crate-vendor" = "cargo_lock_crate_vendor.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 120
