@@ -217,8 +217,6 @@ async def async_main():
                 c.version = version
                 extra_crates.add(c)
 
-                content = await download_crate(c)
-                save_crate(c, content, output_dir)
         crates = set(crates)
         crates.update(extra_crates)
 
