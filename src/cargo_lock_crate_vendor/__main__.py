@@ -31,6 +31,18 @@ class Crate:
     def __eq__(self, o) -> bool:
         return self.name == o.name and self.version == o.version
 
+class Index:
+    def __init__(self):
+        self.dir = ""
+        self.name = ""
+        self.content = ""
+
+    def __hash__(self) -> int:
+        return hash((self.dir, self.name, self.content))
+
+    def __eq__(self, o) -> bool:
+        return self.dir == o.dir and self.content == o.content and self.name == o.name
+
 
 def parse_cargo_lock(fp: io.TextIOBase) -> Set[Crate]:
     crates = set()
@@ -103,6 +115,39 @@ def get_directory(crate_name: str):
     dir2 = crate_name[2:4]
     return dir1, dir2
 
+async def get_index(crate_name: str, registry: Optional[str] = None) -> Index:
+    subdir = get_directory(crate_name)
+
+    index = Index()
+    if type(subdir) is str:
+        index_sub_path = subdir
+    else:
+        (dir1, dir2) = subdir
+        index_sub_path = os.path.join(dir1, dir2)
+    index.dir = index_sub_path
+    index.name = crate_name
+    logging.debug(index.dir)
+
+    if registry is None:
+        if type(subdir) is str:
+            url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{subdir}/{crate_name}"
+        else:
+            (dir1, dir2) = subdir
+            url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{dir1}/{dir2}/{crate_name}"
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            r = await client.get(url)
+            index.content = r.text
+    else:
+        if type(subdir) is str:
+            fpath = os.path.join(f"{os.path.abspath(registry)}", subdir, crate_name)
+        else:
+            (dir1, dir2) = subdir
+            fpath = os.path.join(f"{os.path.abspath(registry)}", dir1, dir2, crate_name)
+        with open(fpath) as fp:
+            content = fp.read()
+            index.content = content
+    return index
+
 
 async def get_crate_versions(crate_name: str, max_previous: int = 5, registry: Optional[str] = None) -> List[str]:
     versions = []
@@ -156,6 +201,14 @@ def save_crate(crate: Crate, content: bytes, output_dir: str):
         fp.write(content)
 
 
+def save_index(index: Index, output_dir: str):
+    odir = os.path.join(output_dir, index.dir)
+    os.makedirs(odir, exist_ok=True)
+    fpath = os.path.join(odir, index.name)
+    with open(fpath, "w") as fp:
+        fp.write(index.content)
+
+
 def parse_args() -> Dict:
     parser = ArgumentParser()
     parser.add_argument("-i", "--input", help="Cargo.lock location")
@@ -163,6 +216,7 @@ def parse_args() -> Dict:
     parser.add_argument("-n", "--name", help="target crate name, must use with --version option")
     parser.add_argument("-v", "--version", help="target crate version, must use with --name option")
     parser.add_argument("-o", "--output", help=".crate save location", default="crates")
+    parser.add_argument("--index-ouput", help="index save location", default="index")
     parser.add_argument("-r", "--registry", help="crates.io-index git registry location")
     parser.add_argument("--max-previous", help="max previous crate version", type=int)
     return vars(parser.parse_args())
@@ -182,6 +236,10 @@ async def async_main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
+    index_ouput_dir = os.path.abspath(cfg["index_ouput"])
+    if not os.path.exists(index_ouput_dir):
+        os.makedirs(index_ouput_dir, exist_ok=True)
+
     downloaded_crates = get_downloaded_crates(output_dir)
 
     crates = set()
@@ -197,6 +255,12 @@ async def async_main():
         crate.name = name
         crate.version = version
         crates = set([crate])
+    
+    indexes = set()
+    for crate in crates:
+        indexes.add(await get_index(crate.name, registry))
+    for index in indexes:
+        save_index(index, index_ouput_dir)
 
     crates = sorted(crates, key=lambda c: (c.name, c.version))
     if cfg.get("all") or cfg.get("max_previous"):
