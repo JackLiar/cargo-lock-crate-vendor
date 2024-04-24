@@ -18,6 +18,7 @@ import httpx
 import toml
 
 CRATE_RE = re.compile(r"[^\s]+(\s.+)*")
+LOG_FORMAT = "%(asctime)s [%(levelname)s] - [%(filename)s > %(funcName)s() > %(lineno)s] - %(message)s"
 
 
 class Crate:
@@ -30,6 +31,7 @@ class Crate:
 
     def __eq__(self, o) -> bool:
         return self.name == o.name and self.version == o.version
+
 
 class Index:
     def __init__(self):
@@ -63,7 +65,9 @@ def parse_cargo_lock(fp: io.TextIOBase) -> Set[Crate]:
         for dep in deps:
             matches = CRATE_RE.match(dep)
             if not matches:
-                raise ValueError("crate regular expression does cover dependency syntax")
+                raise ValueError(
+                    "crate regular expression does cover dependency syntax"
+                )
 
             parts = dep.split(" ")
             name = parts[0]
@@ -115,6 +119,7 @@ def get_directory(crate_name: str):
     dir2 = crate_name[2:4]
     return dir1, dir2
 
+
 async def get_index(crate_name: str, registry: Optional[str] = None) -> Index:
     subdir = get_directory(crate_name)
 
@@ -149,7 +154,9 @@ async def get_index(crate_name: str, registry: Optional[str] = None) -> Index:
     return index
 
 
-async def get_crate_versions(crate_name: str, max_previous: int = 5, registry: Optional[str] = None) -> List[str]:
+async def get_crate_versions(
+    crate_name: str, max_previous: int = 5, registry: Optional[str] = None
+) -> List[str]:
     versions = []
     result = get_directory(crate_name)
 
@@ -212,12 +219,20 @@ def save_index(index: Index, output_dir: str):
 def parse_args() -> Dict:
     parser = ArgumentParser()
     parser.add_argument("-i", "--input", help="Cargo.lock location")
-    parser.add_argument("--all", help="download all versions of all crates", action="store_true")
-    parser.add_argument("-n", "--name", help="target crate name, must use with --version option")
-    parser.add_argument("-v", "--version", help="target crate version, must use with --name option")
+    parser.add_argument(
+        "--all", help="download all versions of all crates", action="store_true"
+    )
+    parser.add_argument(
+        "-n", "--name", help="target crate name, must use with --version option"
+    )
+    parser.add_argument(
+        "-v", "--version", help="target crate version, must use with --name option"
+    )
     parser.add_argument("-o", "--output", help=".crate save location", default="crates")
     parser.add_argument("--index-ouput", help="index save location", default="index")
-    parser.add_argument("-r", "--registry", help="crates.io-index git registry location")
+    parser.add_argument(
+        "-r", "--registry", help="crates.io-index git registry location"
+    )
     parser.add_argument("--max-previous", help="max previous crate version", type=int)
     return vars(parser.parse_args())
 
@@ -225,7 +240,7 @@ def parse_args() -> Dict:
 async def async_main():
     cfg = parse_args()
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
     logging.getLogger("httpx").setLevel(logging.INFO)
 
     output_dir = os.path.abspath(cfg["output"])
