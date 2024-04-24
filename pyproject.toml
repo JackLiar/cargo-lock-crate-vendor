@@ -1,20 +1,22 @@
-[build-system]
-requires = ["setuptools>=42", "wheel", "build"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "cargo-lock-crate-vendor"
 version = "0.1.0"
-dependencies = ["httpx", "toml"]
+description = ""
+authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-classifiers = ["Programming Language :: Python :: 3"]
+packages = [{include="cargo_lock_crate_vendor", from="src"}]
 
+[tool.poetry.dependencies]
+python = "^3.12"
+httpx = "^0.27.0"
+toml = "^0.10.2"
 
-[project.scripts]
+[tool.poetry.group.dev.dependencies]
+poetry = "^1.8.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
 "cargo-lock-crate-vendor" = "cargo_lock_crate_vendor.__main__:main"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.black]
-line-length = 120
