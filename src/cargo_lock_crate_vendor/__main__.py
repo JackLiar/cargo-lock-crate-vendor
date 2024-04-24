@@ -124,7 +124,7 @@ async def get_index(crate_name: str, registry: Optional[str] = None) -> Index:
     subdir = get_directory(crate_name)
 
     index = Index()
-    if type(subdir) is str:
+    if isinstance(subdir, str):
         index_sub_path = subdir
     else:
         (dir1, dir2) = subdir
@@ -134,7 +134,7 @@ async def get_index(crate_name: str, registry: Optional[str] = None) -> Index:
     logging.debug(index.dir)
 
     if registry is None:
-        if type(subdir) is str:
+        if isinstance(subdir, str):
             url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{subdir}/{crate_name}"
         else:
             (dir1, dir2) = subdir
@@ -143,7 +143,7 @@ async def get_index(crate_name: str, registry: Optional[str] = None) -> Index:
             r = await client.get(url)
             index.content = r.text
     else:
-        if type(subdir) is str:
+        if isinstance(subdir, str):
             fpath = os.path.join(f"{os.path.abspath(registry)}", subdir, crate_name)
         else:
             (dir1, dir2) = subdir
@@ -161,7 +161,7 @@ async def get_crate_versions(
     result = get_directory(crate_name)
 
     if registry is None:
-        if type(result) is str:
+        if isinstance(result, str):
             url = f"https://raw.githubusercontent.com/rust-lang/crates.io-index/master/{result}/{crate_name}"
         else:
             (dir1, dir2) = result
@@ -175,7 +175,7 @@ async def get_crate_versions(
                 ver = crate_info["vers"]
                 versions.append(ver)
     else:
-        if type(result) is str:
+        if isinstance(result, str):
             fpath = os.path.join(f"{os.path.abspath(registry)}", result, crate_name)
         else:
             (dir1, dir2) = result
