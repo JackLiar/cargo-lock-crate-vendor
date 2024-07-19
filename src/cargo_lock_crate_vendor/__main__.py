@@ -191,7 +191,8 @@ async def download_crate(crate: Crate) -> bytes:
     logging.info(f"downloading {crate.name} {crate.version}")
     transport = httpx.AsyncHTTPTransport(retries=5)
     async with httpx.AsyncClient(transport=transport) as client:
-        url = f"https://static.crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
+        # url = f"https://static.crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
+        url = f"https://s3.jcloud.sjtu.edu.cn/899a892efef34b1b944a19981040f55b-oss01/crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
 
         r = await client.get(url)
         return r.content
