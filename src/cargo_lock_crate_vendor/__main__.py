@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import asyncio
 import io
@@ -228,7 +226,7 @@ def parse_args() -> Dict:
         "-v", "--version", help="target crate version, must use with --name option"
     )
     parser.add_argument("-o", "--output", help=".crate save location", default="crates")
-    parser.add_argument("--index-ouput", help="index save location", default="index")
+    parser.add_argument("--index-output", help="index save location", default="index")
     parser.add_argument(
         "-r", "--registry", help="crates.io-index git registry location"
     )
@@ -249,11 +247,11 @@ async def async_main():
 
     os.makedirs(output_dir, exist_ok=True)
 
-    index_ouput_dir = os.path.abspath(cfg["index_ouput"])
-    os.makedirs(index_ouput_dir, exist_ok=True)
+    index_output_dir = os.path.abspath(cfg["index_output"])
+    os.makedirs(index_output_dir, exist_ok=True)
 
     downloaded_crates = get_downloaded_crates(output_dir)
-    downloaded_indices = get_downloaded_indices(index_ouput_dir)
+    downloaded_indices = get_downloaded_indices(index_output_dir)
     logging.info(
         f"already download {len(downloaded_crates)} crates, {len(downloaded_indices)} indices"
     )
@@ -278,7 +276,7 @@ async def async_main():
             continue
 
         index = await get_index(crate, registry)
-        save_index(index, index_ouput_dir)
+        save_index(index, index_output_dir)
 
     if cfg.get("all") or cfg.get("max_previous"):
         max_previous = 0
