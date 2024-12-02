@@ -1,22 +1,18 @@
-[tool.poetry]
+[project]
 name = "cargo-lock-crate-vendor"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "Add your description here"
 readme = "README.md"
-packages = [{include="cargo_lock_crate_vendor", from="src"}]
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx[async,socks]>=0.28.0",
+    "toml>=0.10.2",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-toml = "^0.10.2"
-httpx = {version = "^0.27.0", extras = ["socks"]}
-
-[tool.poetry.group.dev.dependencies]
-poetry = "^1.8.2"
+[project.scripts]
+cargo-lock-crate-vendor = "cargo_lock_crate_vendor.__main__:main"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-"cargo-lock-crate-vendor" = "cargo_lock_crate_vendor.__main__:main"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
