@@ -128,7 +128,7 @@ async def get_index(crate: Crate, registry: Optional[str] = None) -> Index:
     subdir = get_directory(crate.name)
 
     index = Index(name=crate.name)
-    logging.info(f"fetch index {index.dir()}")
+    logging.info(f"fetch index {index.dir()}/{crate.name}")
 
     if registry is None:
         if isinstance(subdir, str):
