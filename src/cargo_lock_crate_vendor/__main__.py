@@ -306,7 +306,7 @@ async def async_main():
             continue
 
         content = await download_crate(crate)
-        if not content.startswith(b"\x1f8B"):
+        if not content.startswith(b"\x1f\x8b"):
             logging.warning(
                 f"crate {crate.name}[{crate.version}] download failed, not a gzip file!"
             )
