@@ -124,6 +124,76 @@ def get_directory(crate_name: str):
     return dir1, dir2
 
 
+def resolve_cargo_home() -> str:
+    """Get Cargo home directory, respecting CARGO_HOME environment variable."""
+    return os.environ.get("CARGO_HOME", os.path.expanduser("~/.cargo"))
+
+
+def find_cargo_cache_dirs(cargo_home: str) -> List[str]:
+    """Find all cargo registry cache directories under cargo_home.
+
+    Scans $CARGO_HOME/registry/cache/ for subdirectories matching
+    the pattern index.crates.io-*.
+
+    Returns:
+        Sorted list of absolute paths to cache directories.
+        Empty list if no cache directories found.
+    """
+    cache_root = os.path.join(cargo_home, "registry", "cache")
+    if not os.path.isdir(cache_root):
+        return []
+
+    dirs = []
+    for entry in os.listdir(cache_root):
+        if entry.startswith("index.crates.io-"):
+            dirpath = os.path.join(cache_root, entry)
+            if os.path.isdir(dirpath):
+                dirs.append(dirpath)
+    return sorted(dirs)
+
+
+def crate_to_cache_filenames(crate: Crate) -> List[str]:
+    """Generate candidate cache filenames for a crate.
+
+    Generates two variants to cover different cargo naming conventions:
+    1. Original crate name (hyphens preserved):  aho-corasick-1.1.4.crate
+    2. Hyphens replaced with underscores:         aho_corasick-1.1.4.crate
+
+    Uses dict.fromkeys() to deduplicate while preserving order.
+    """
+    candidates = [
+        f"{crate.name}-{crate.version}.crate",
+        f"{crate.name.replace('-', '_')}-{crate.version}.crate",
+    ]
+    return list(dict.fromkeys(candidates))
+
+
+def try_read_crate_from_cache(crate: Crate, cache_dirs: List[str]) -> Optional[bytes]:
+    """Try to read a .crate file from local cargo cache directories.
+
+    Iterates over all cache dirs and filename candidates.
+    Returns the file content as bytes on first match, None if not found.
+    """
+    filenames = crate_to_cache_filenames(crate)
+
+    for cache_dir in cache_dirs:
+        for filename in filenames:
+            filepath = os.path.join(cache_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, "rb") as f:
+                    content = f.read()
+                logging.info(
+                    f"found {crate.name} {crate.version} in local cargo cache: {filepath}"
+                )
+                return content
+            except (OSError, PermissionError) as e:
+                logging.debug(f"failed to read {filepath}: {e}")
+                continue
+    return None
+
+
 async def get_index(crate: Crate, registry: Optional[str] = None) -> Index:
     subdir = get_directory(crate.name)
 
@@ -187,7 +257,17 @@ async def get_crate_versions(
     return versions
 
 
-async def download_crate(crate: Crate) -> bytes:
+async def download_crate(crate: Crate, cache_dirs: Optional[List[str]] = None) -> bytes:
+    """Download a .crate file, with optional local cargo cache fallback.
+
+    If cache_dirs is provided and non-empty, attempts to read the crate
+    from local cache before falling back to HTTP download.
+    """
+    if cache_dirs:
+        cached = try_read_crate_from_cache(crate, cache_dirs)
+        if cached is not None:
+            return cached
+
     logging.info(f"downloading {crate.name} {crate.version}")
     transport = httpx.AsyncHTTPTransport(retries=5)
     async with httpx.AsyncClient(transport=transport) as client:
@@ -232,6 +312,11 @@ def parse_args() -> Dict:
         "-r", "--registry", help="crates.io-index git registry location"
     )
     parser.add_argument("--max-previous", help="max previous crate version", type=int)
+    parser.add_argument(
+        "--no-local-cache",
+        help="disable checking local cargo registry cache for .crate files",
+        action="store_true",
+    )
     return vars(parser.parse_args())
 
 
@@ -256,6 +341,19 @@ async def async_main():
     logging.info(
         f"already download {len(downloaded_crates)} crates, {len(downloaded_indices)} indices"
     )
+
+    # Discover local cargo registry cache directories
+    cargo_cache_dirs: List[str] = []
+    if not cfg.get("no_local_cache"):
+        cargo_home = resolve_cargo_home()
+        cargo_cache_dirs = find_cargo_cache_dirs(cargo_home)
+        if cargo_cache_dirs:
+            logging.info(
+                f"found {len(cargo_cache_dirs)} cargo cache dir(s): "
+                f"{[os.path.basename(d) for d in cargo_cache_dirs]}"
+            )
+        else:
+            logging.info("no cargo cache directories found, skipping local cache")
 
     crates = set()
     if cfg.get("input", None) is not None:
@@ -305,10 +403,10 @@ async def async_main():
             print(f"{crate.name} {crate.version} is already downloaded")
             continue
 
-        content = await download_crate(crate)
+        content = await download_crate(crate, cache_dirs=cargo_cache_dirs)
         if not content.startswith(b"\x1f\x8b"):
             logging.warning(
-                f"crate {crate.name}[{crate.version}] download failed, not a gzip file!"
+                f"crate {crate.name}[{crate.version}] download/copy failed, not a gzip file!"
             )
             continue
         save_crate(crate, content, output_dir)
